@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bhuvanesh Wood Neon World</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #ff00ff; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #ff00ff; }
+        .score { color: #ffd700; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>BHUVANESH WORLD</b><br>
+        COINS: <span id="score" class="score">0</span>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { FontLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FontLoader.js';
+        import { TextGeometry } from 'https://unpkg.com/three@0.160.0/examples/jsm/geometries/TextGeometry.js';
+
+        // --- 1. NEON ATMOSPHERE ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a000f); 
+        scene.fog = new THREE.FogExp2(0x1a002a, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0x404040, 2));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(10, 20, 15);
+        scene.add(sun);
+
+        // --- 2. TEXTURES & SKINS ---
+        function createWoodTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#6d4c41'; ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 2;
+            for (let i = 0; i < 10; i++) {
+                ctx.beginPath(); ctx.moveTo(0, i * 15);
+                ctx.bezierCurveTo(40, i * 15 + 10, 80, i * 15 - 10, 128, i * 15); ctx.stroke();
+            }
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        function createMarioTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "#ffcc99"; ctx.fillRect(0, 0, 64, 64); // Skin
+            ctx.fillStyle = "#ff0000"; ctx.fillRect(0, 0, 64, 20); // Hat
+            ctx.fillStyle = "#000"; ctx.fillRect(15, 25, 8, 12); ctx.fillRect(40, 25, 8, 12); // Eyes
+            ctx.fillStyle = "#4b2c20"; ctx.fillRect(15, 45, 34, 8); // Mustache
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const woodTex = createWoodTexture();
+        const marioTex = createMarioTexture();
+
+        // --- 3. FLOATING NEON SIGN ---
+        let textMesh;
+        const fontLoader = new FontLoader();
+        fontLoader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+            const textGeo = new TextGeometry('BHUVANESH', { font: font, size: 7, height: 2 });
+            textGeo.center();
+            textMesh = new THREE.Mesh(textGeo, new THREE.MeshStandardMaterial({ 
+                color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 4 
+            }));
+            textMesh.position.set(0, 15, -15);
+            scene.add(textMesh);
+        });
+
+        // --- 4. PLAYER & MAP ---
+        const player = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshPhongMaterial({ map: marioTex }));
+        player.position.set(0, 5, 0);
+        scene.add(player);
+
+        const blocks = [];
+        const coins = [];
+        let score = 0, lastX = -10;
+
+        const mats = {
+            ground: new THREE.MeshPhongMaterial({ color: 0x3d2b1f }),
+            wood: new THREE.MeshPhongMaterial({ map: woodTex }),
+            coin: new THREE.MeshPhongMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.5 })
+        };
+
+        function spawnMap() {
+            while (lastX < player.position.x + 80) {
+                lastX += 2.2;
+                if (Math.random() < 0.15 && lastX > 5) continue; // Pits
+
+                const ground = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2, 2.2), mats.ground);
+                ground.position.set(lastX, 0, 0);
+                scene.add(ground);
+                blocks.push(ground);
+
+                if (Math.random() > 0.7) {
+                    const h = Math.floor(Math.random() * 3) + 1;
+                    for(let i=1; i<=h; i++) {
+                        const log = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mats.wood);
+                        log.position.set(lastX, i * 2, 0);
+                        scene.add(log);
+                        blocks.push(log);
+                    }
+                }
+
+                if (Math.random() > 0.8) {
+                    const c = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.1, 8, 16), mats.coin);
+                    c.position.set(lastX, 8, 0);
+                    scene.add(c);
+                    coins.push(c);
+                }
+            }
+        }
+
+        // --- 5. ENGINE ---
+        let vy = 0, grounded = false;
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        function update() {
+            if (keys['KeyD']) player.position.x += 0.25;
+            if (keys['KeyA']) player.position.x -= 0.25;
+            if (keys['Space'] && grounded) { vy = 0.5; grounded = false; }
+
+            vy -= 0.022;
+            player.position.y += vy;
+            
+            grounded = false;
+            const pBox = new THREE.Box3().setFromObject(player);
+
+            blocks.forEach(b => {
+                if (Math.abs(b.position.x - player.position.x) < 2.5) {
+                    const bBox = new THREE.Box3().setFromObject(b);
+                    if (pBox.intersectsBox(bBox)) {
+                        if (vy <= 0 && player.position.y > b.position.y) {
+                            player.position.y = bBox.max.y + 0.75;
+                            vy = 0;
+                            grounded = true;
+                        }
+                    }
+                }
+            });
+
+            coins.forEach((c, i) => {
+                c.rotation.y += 0.05;
+                if (player.position.distanceTo(c.position) < 1.5) {
+                    scene.remove(c); coins.splice(i, 1);
+                    score++; document.getElementById('score').innerText = score;
+                }
+            });
+
+            if (player.position.y < -10) player.position.set(player.position.x - 5, 10, 0);
+
+            spawnMap();
+            if(textMesh) textMesh.position.x = player.position.x; // Follow player
+
+            camera.position.lerp(new THREE.Vector3(player.position.x - 5, player.position.y + 8, 20), 0.1);
+            camera.lookAt(player.position.x, player.position.y, 0);
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+</html>
